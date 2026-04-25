@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0f17" />
+  <title>AI 360 VR Viewer</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main id="viewer" aria-label="360 Grad Panorama Viewer"></main>
+
+  <button id="galleryToggle" class="icon-button" type="button" aria-label="Galerie öffnen" title="Galerie">
+    <span aria-hidden="true">▦</span>
+  </button>
+
+  <section id="galleryPanel" class="gallery-panel" aria-label="Panorama Galerie" aria-hidden="true">
+    <header class="gallery-header">
+      <div>
+        <h1>AI 360 VR Viewer</h1>
+        <p>Equirektangulare Panoramas hochladen, speichern und betrachten.</p>
+      </div>
+      <button id="closeGallery" class="ghost-button" type="button">Schließen</button>
+    </header>
+
+    <div class="upload-card">
+      <label for="fileInput" class="upload-label">
+        <strong>Bilder hochladen</strong>
+        <span>JPEG, PNG, WebP. Metadaten sind nicht erforderlich.</span>
+      </label>
+      <input id="fileInput" type="file" accept="image/*" multiple />
+      <p class="hint">Tipp: 2:1-Bilder funktionieren am besten, z. B. 8192×4096 oder 4096×2048.</p>
+    </div>
+
+    <div class="gallery-actions">
+      <button id="deleteCurrent" class="danger-button" type="button" disabled>Aktuelles Bild löschen</button>
+      <button id="clearGallery" class="ghost-button" type="button">Galerie leeren</button>
+    </div>
+
+    <div id="emptyState" class="empty-state">
+      Noch keine Bilder gespeichert.
+    </div>
+
+    <div id="galleryGrid" class="gallery-grid" aria-live="polite"></div>
+  </section>
+
+  <div id="dropOverlay" class="drop-overlay" aria-hidden="true">
+    <div>Bilder hier ablegen</div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
