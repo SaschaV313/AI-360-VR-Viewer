@@ -1,0 +1,39 @@
+.placeholder-overlay {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  pointer-events: none;
+  transition: opacity 180ms ease, visibility 180ms ease;
+}
+
+.placeholder-overlay.hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.placeholder-card {
+  display: grid;
+  gap: 10px;
+  max-width: min(520px, calc(100vw - 48px));
+  padding: 26px 32px;
+  border: 1px solid rgba(103, 232, 249, 0.26);
+  border-radius: 28px;
+  background: rgba(2, 6, 23, 0.48);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+  text-align: center;
+}
+
+.placeholder-card strong {
+  font-size: clamp(2rem, 6vw, 4.5rem);
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.placeholder-card span {
+  color: var(--muted);
+  font-size: clamp(1rem, 2.5vw, 1.4rem);
+}
