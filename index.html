@@ -14,6 +14,13 @@
 <body>
   <main id="viewer" aria-label="360 Grad Panorama Viewer"></main>
 
+  <div id="placeholderOverlay" class="placeholder-overlay" aria-hidden="false">
+    <div class="placeholder-card">
+      <strong>AI 360 VR Viewer</strong>
+      <span>Upload an equirectangular panorama</span>
+    </div>
+  </div>
+
   <nav class="viewer-toolbar" aria-label="Viewer Werkzeuge">
     <button id="galleryToggle" class="icon-button" type="button" aria-label="Galerie öffnen" title="Galerie">▦</button>
     <button id="resetView" class="icon-button" type="button" aria-label="Ansicht zurücksetzen" title="Ansicht zurücksetzen">⌂</button>
@@ -63,5 +70,6 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script type="module" src="./app.js"></script>
+  <script src="./placeholder-state.js" defer></script>
 </body>
 </html>
