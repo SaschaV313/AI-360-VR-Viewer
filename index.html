@@ -4,15 +4,21 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0b0f17" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="AI 360 Viewer" />
   <title>AI 360 VR Viewer</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <main id="viewer" aria-label="360 Grad Panorama Viewer"></main>
 
-  <button id="galleryToggle" class="icon-button" type="button" aria-label="Galerie öffnen" title="Galerie">
-    <span aria-hidden="true">▦</span>
-  </button>
+  <nav class="viewer-toolbar" aria-label="Viewer Werkzeuge">
+    <button id="galleryToggle" class="icon-button" type="button" aria-label="Galerie öffnen" title="Galerie">▦</button>
+    <button id="resetView" class="icon-button" type="button" aria-label="Ansicht zurücksetzen" title="Ansicht zurücksetzen">⌂</button>
+    <button id="fullscreenToggle" class="icon-button" type="button" aria-label="Vollbild starten" title="Vollbild">⛶</button>
+  </nav>
 
   <section id="galleryPanel" class="gallery-panel" aria-label="Panorama Galerie" aria-hidden="true">
     <header class="gallery-header">
@@ -30,6 +36,12 @@
       </label>
       <input id="fileInput" type="file" accept="image/*" multiple />
       <p class="hint">Tipp: 2:1-Bilder funktionieren am besten, z. B. 8192×4096 oder 4096×2048.</p>
+    </div>
+
+    <div class="gallery-actions">
+      <button id="exportGallery" class="ghost-button" type="button" disabled>Export</button>
+      <button id="importGallery" class="ghost-button" type="button">Import</button>
+      <input id="importInput" class="visually-hidden" type="file" accept="application/json,.json" />
     </div>
 
     <div class="gallery-actions">
