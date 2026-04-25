@@ -1,9 +1,11 @@
-const CACHE_NAME = "ai-360-vr-viewer-v2";
+const CACHE_NAME = "ai-360-vr-viewer-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
+  "./placeholder.css",
   "./app.js",
+  "./placeholder-state.js",
   "./manifest.webmanifest",
   "./icon.svg"
 ];
