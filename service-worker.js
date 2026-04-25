@@ -1,4 +1,4 @@
-const CACHE_NAME = "ai-360-vr-viewer-v4";
+const CACHE_NAME = "ai-360-vr-viewer-v5";
 const APP_SHELL = [
   "./",
   "./index.html",
