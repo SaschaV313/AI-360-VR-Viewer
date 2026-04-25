@@ -682,15 +682,6 @@ function createPlaceholderCanvas() {
     context.stroke();
   }
 
-  context.fillStyle = "rgba(248, 250, 252, 0.92)";
-  context.font = "bold 72px system-ui, sans-serif";
-  context.textAlign = "center";
-  context.fillText("AI 360 VR Viewer", canvas.width / 2, canvas.height / 2 - 20);
-
-  context.fillStyle = "rgba(148, 163, 184, 0.9)";
-  context.font = "36px system-ui, sans-serif";
-  context.fillText("Upload an equirectangular panorama", canvas.width / 2, canvas.height / 2 + 48);
-
   return canvas;
 }
 
