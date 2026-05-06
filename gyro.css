@@ -1,0 +1,7 @@
+.icon-button.active,
+.icon-button[aria-pressed="true"] {
+  border-color: rgba(103, 232, 249, 0.9);
+  color: #e0faff;
+  background: rgba(8, 145, 178, 0.28);
+  box-shadow: 0 0 0 1px rgba(103, 232, 249, 0.24), 0 0 28px rgba(103, 232, 249, 0.2), var(--shadow);
+}
