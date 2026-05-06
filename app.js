@@ -16,6 +16,7 @@ const deleteCurrentButton=document.querySelector("#deleteCurrent");
 const clearGalleryButton=document.querySelector("#clearGallery");
 const resetViewButton=document.querySelector("#resetView");
 const fullscreenButton=document.querySelector("#fullscreenToggle");
+const gyroButton=document.querySelector("#gyroToggle");
 const dropOverlay=document.querySelector("#dropOverlay");
 const toast=document.querySelector("#toast");
 
@@ -23,6 +24,7 @@ let db,currentId=null,currentObjectUrl=null,currentTexture=null;
 let lon=0,lat=0,targetLon=0,targetLat=0,fov=75,targetFov=75;
 const pointers=new Map();
 let isDragging=false,lastPointerX=0,lastPointerY=0,lastPinchDistance=0;
+let gyroEnabled=false,gyroReference=null,lastOrientation=null;
 
 const vertexShaderSource=`attribute vec3 aPosition;attribute vec2 aUv;uniform mat4 uProjection;uniform mat4 uView;varying vec2 vUv;void main(){vUv=aUv;gl_Position=uProjection*uView*vec4(aPosition,1.0);}`;
 const fragmentShaderSource=`precision mediump float;uniform sampler2D uTexture;varying vec2 vUv;void main(){gl_FragColor=texture2D(uTexture,vUv);}`;
@@ -62,11 +64,13 @@ function createRenderer(){
 
 function bindEvents(){
   window.addEventListener("resize",onResize);
+  window.addEventListener("orientationchange",()=>setTimeout(()=>{onResize();resetGyroReference(false);},250));
   document.addEventListener("fullscreenchange",updateFullscreenLabel);
   galleryToggle.addEventListener("click",()=>galleryPanel.classList.contains("open")?hideGallery():showGallery());
   closeGallery.addEventListener("click",hideGallery);
   resetViewButton.addEventListener("click",resetView);
   fullscreenButton.addEventListener("click",toggleFullscreen);
+  gyroButton?.addEventListener("click",toggleGyro);
   fileInput.addEventListener("change",async e=>{await saveFiles([...e.target.files]);fileInput.value="";});
   importGalleryButton.addEventListener("click",()=>importInput.click());
   importInput.addEventListener("change",async e=>{const file=e.target.files?.[0];if(file) await importGallery(file);importInput.value="";});
@@ -125,8 +129,10 @@ function onPointerMove(event){
   if(!isDragging) return;
   const dx=event.clientX-lastPointerX;
   const dy=event.clientY-lastPointerY;
-  targetLon-=dx*0.1;
-  targetLat=clamp(targetLat+dy*0.1,-85,85);
+  if(!gyroEnabled){
+    targetLon-=dx*0.1;
+    targetLat=clamp(targetLat+dy*0.1,-85,85);
+  }
   lastPointerX=event.clientX;
   lastPointerY=event.clientY;
 }
@@ -141,7 +147,11 @@ function onPointerUp(event){
 
 function onWheel(event){event.preventDefault();targetFov=clamp(targetFov+event.deltaY*0.035,35,100);}
 function getPinchDistance(){const [a,b]=[...pointers.values()];return Math.hypot(a.x-b.x,a.y-b.y);}
-function resetView(){targetLon=0;targetLat=0;targetFov=75;showToast("Ansicht zurückgesetzt.");}
+
+function resetView(){
+  if(gyroEnabled){resetGyroReference(true);return;}
+  targetLon=0;targetLat=0;targetFov=75;showToast("Ansicht zurückgesetzt.");
+}
 
 async function toggleFullscreen(){
   if(!document.fullscreenElement) await document.documentElement.requestFullscreen?.();
@@ -155,6 +165,94 @@ function updateFullscreenLabel(){
   fullscreenButton.title=active?"Vollbild beenden":"Vollbild";
   fullscreenButton.textContent=active?"⤢":"⛶";
 }
+
+async function toggleGyro(){
+  if(gyroEnabled){disableGyro();return;}
+  if(!("DeviceOrientationEvent" in window)){showToast("Gyro wird von diesem Browser nicht unterstützt.");return;}
+  try{
+    if(typeof DeviceOrientationEvent.requestPermission==="function"){
+      const permission=await DeviceOrientationEvent.requestPermission();
+      if(permission!=="granted"){showToast("Bewegungssensor nicht freigegeben.");return;}
+    }
+    enableGyro();
+  }catch{
+    showToast("Gyro konnte nicht aktiviert werden.");
+  }
+}
+
+function enableGyro(){
+  gyroEnabled=true;
+  gyroReference=null;
+  lastOrientation=null;
+  window.addEventListener("deviceorientation",handleDeviceOrientation,true);
+  gyroButton?.classList.add("active");
+  gyroButton?.setAttribute("aria-pressed","true");
+  gyroButton?.setAttribute("aria-label","Gyro ausschalten");
+  gyroButton.title="Gyro ausschalten";
+  showToast("Gyro aktiv. Reset setzt die Referenz neu.");
+}
+
+function disableGyro(){
+  gyroEnabled=false;
+  gyroReference=null;
+  lastOrientation=null;
+  window.removeEventListener("deviceorientation",handleDeviceOrientation,true);
+  gyroButton?.classList.remove("active");
+  gyroButton?.setAttribute("aria-pressed","false");
+  gyroButton?.setAttribute("aria-label","Gyro einschalten");
+  gyroButton.title="Gyro einschalten";
+  showToast("Gyro aus.");
+}
+
+function handleDeviceOrientation(event){
+  if(!gyroEnabled) return;
+  if(event.alpha==null&&event.beta==null&&event.gamma==null) return;
+  const orientation=normalizeOrientation(event);
+  lastOrientation=orientation;
+  if(!gyroReference){
+    gyroReference=orientation;
+    targetLon=0;
+    targetLat=0;
+    return;
+  }
+  const deltaYaw=shortestAngleDelta(orientation.yaw,gyroReference.yaw);
+  const deltaPitch=orientation.pitch-gyroReference.pitch;
+  targetLon=clamp(deltaYaw,-180,180);
+  targetLat=clamp(-deltaPitch,-85,85);
+}
+
+function normalizeOrientation(event){
+  const screenAngle=getScreenAngle();
+  let yaw=event.alpha??0;
+  let pitch=event.beta??0;
+  let roll=event.gamma??0;
+  if(Math.abs(screenAngle)===90){
+    pitch=roll;
+  }
+  return{yaw:wrapAngle(yaw+screenAngle),pitch:clamp(pitch,-90,90)};
+}
+
+function getScreenAngle(){
+  if(screen.orientation&&typeof screen.orientation.angle==="number") return screen.orientation.angle;
+  if(typeof window.orientation==="number") return window.orientation;
+  return 0;
+}
+
+function resetGyroReference(showMessage=true){
+  if(!gyroEnabled) return;
+  gyroReference=lastOrientation?{...lastOrientation}:null;
+  targetLon=0;
+  targetLat=0;
+  if(showMessage) showToast("Gyro-Referenz neu gesetzt.");
+}
+
+function shortestAngleDelta(current,reference){
+  let delta=current-reference;
+  while(delta>180) delta-=360;
+  while(delta<-180) delta+=360;
+  return delta;
+}
+function wrapAngle(value){return((value%360)+360)%360;}
 
 function onResize(){
   const pr=Math.min(window.devicePixelRatio||1,2);
@@ -227,7 +325,7 @@ async function loadPanorama(id,options={hideGallery:true}){
     const texture=createTextureFromImage(image);
     if(currentTexture) gl.deleteTexture(currentTexture);
     currentTexture=texture;
-    resetView();
+    if(gyroEnabled) resetGyroReference(false); else resetView();
     markActiveThumb();
     deleteCurrentButton.disabled=false;
     if(options.hideGallery) hideGallery();
