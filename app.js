@@ -24,7 +24,7 @@ let db,currentId=null,currentObjectUrl=null,currentTexture=null;
 let lon=0,lat=0,targetLon=0,targetLat=0,fov=75,targetFov=75;
 const pointers=new Map();
 let isDragging=false,lastPointerX=0,lastPointerY=0,lastPinchDistance=0;
-let gyroEnabled=false,gyroReference=null,lastOrientation=null;
+let gyroEnabled=false,gyroReferenceQuaternion=null,lastGyroQuaternion=null;
 
 const vertexShaderSource=`attribute vec3 aPosition;attribute vec2 aUv;uniform mat4 uProjection;uniform mat4 uView;varying vec2 vUv;void main(){vUv=aUv;gl_Position=uProjection*uView*vec4(aPosition,1.0);}`;
 const fragmentShaderSource=`precision mediump float;uniform sampler2D uTexture;varying vec2 vUv;void main(){gl_FragColor=texture2D(uTexture,vUv);}`;
@@ -129,10 +129,7 @@ function onPointerMove(event){
   if(!isDragging) return;
   const dx=event.clientX-lastPointerX;
   const dy=event.clientY-lastPointerY;
-  if(!gyroEnabled){
-    targetLon-=dx*0.1;
-    targetLat=clamp(targetLat+dy*0.1,-85,85);
-  }
+  if(!gyroEnabled){targetLon-=dx*0.1;targetLat=clamp(targetLat+dy*0.1,-89,89);}
   lastPointerX=event.clientX;
   lastPointerY=event.clientY;
 }
@@ -175,15 +172,13 @@ async function toggleGyro(){
       if(permission!=="granted"){showToast("Bewegungssensor nicht freigegeben.");return;}
     }
     enableGyro();
-  }catch{
-    showToast("Gyro konnte nicht aktiviert werden.");
-  }
+  }catch{showToast("Gyro konnte nicht aktiviert werden.");}
 }
 
 function enableGyro(){
   gyroEnabled=true;
-  gyroReference=null;
-  lastOrientation=null;
+  gyroReferenceQuaternion=null;
+  lastGyroQuaternion=null;
   window.addEventListener("deviceorientation",handleDeviceOrientation,true);
   gyroButton?.classList.add("active");
   gyroButton?.setAttribute("aria-pressed","true");
@@ -194,8 +189,8 @@ function enableGyro(){
 
 function disableGyro(){
   gyroEnabled=false;
-  gyroReference=null;
-  lastOrientation=null;
+  gyroReferenceQuaternion=null;
+  lastGyroQuaternion=null;
   window.removeEventListener("deviceorientation",handleDeviceOrientation,true);
   gyroButton?.classList.remove("active");
   gyroButton?.setAttribute("aria-pressed","false");
@@ -206,30 +201,37 @@ function disableGyro(){
 
 function handleDeviceOrientation(event){
   if(!gyroEnabled) return;
-  if(event.alpha==null&&event.beta==null&&event.gamma==null) return;
-  const orientation=normalizeOrientation(event);
-  lastOrientation=orientation;
-  if(!gyroReference){
-    gyroReference=orientation;
-    targetLon=0;
-    targetLat=0;
+  if(event.alpha==null||event.beta==null||event.gamma==null) return;
+  const currentQuaternion=deviceOrientationToQuaternion(event);
+  lastGyroQuaternion=currentQuaternion;
+  if(!gyroReferenceQuaternion){
+    gyroReferenceQuaternion=currentQuaternion;
+    targetLon=0;targetLat=0;
     return;
   }
-  const deltaYaw=shortestAngleDelta(orientation.yaw,gyroReference.yaw);
-  const deltaPitch=orientation.pitch-gyroReference.pitch;
-  targetLon=clamp(deltaYaw,-180,180);
-  targetLat=clamp(-deltaPitch,-85,85);
+  const relativeQuaternion=quaternionMultiply(quaternionInvert(gyroReferenceQuaternion),currentQuaternion);
+  const deviceForward=rotateVectorByQuaternion([0,0,-1],relativeQuaternion);
+  const viewerForward=normalize([-deviceForward[2],deviceForward[1],deviceForward[0]]);
+  targetLon=radToDeg(Math.atan2(viewerForward[2],viewerForward[0]));
+  targetLat=clamp(radToDeg(Math.asin(clamp(viewerForward[1],-1,1))),-89,89);
 }
 
-function normalizeOrientation(event){
-  const screenAngle=getScreenAngle();
-  let yaw=event.alpha??0;
-  let pitch=event.beta??0;
-  let roll=event.gamma??0;
-  if(Math.abs(screenAngle)===90){
-    pitch=roll;
-  }
-  return{yaw:wrapAngle(yaw+screenAngle),pitch:clamp(pitch,-90,90)};
+function deviceOrientationToQuaternion(event){
+  const alpha=degToRad(event.alpha||0);
+  const beta=degToRad(event.beta||0);
+  const gamma=degToRad(event.gamma||0);
+  const orient=degToRad(getScreenAngle());
+  let q=quaternionFromEulerYXZ(beta,alpha,-gamma);
+  q=quaternionMultiply(q,quaternionFromAxisAngle([1,0,0],-Math.PI/2));
+  q=quaternionMultiply(q,quaternionFromAxisAngle([0,0,1],-orient));
+  return quaternionNormalize(q);
+}
+
+function resetGyroReference(showMessage=true){
+  if(!gyroEnabled) return;
+  gyroReferenceQuaternion=lastGyroQuaternion?[...lastGyroQuaternion]:null;
+  targetLon=0;targetLat=0;
+  if(showMessage) showToast("Gyro-Referenz neu gesetzt.");
 }
 
 function getScreenAngle(){
@@ -237,22 +239,6 @@ function getScreenAngle(){
   if(typeof window.orientation==="number") return window.orientation;
   return 0;
 }
-
-function resetGyroReference(showMessage=true){
-  if(!gyroEnabled) return;
-  gyroReference=lastOrientation?{...lastOrientation}:null;
-  targetLon=0;
-  targetLat=0;
-  if(showMessage) showToast("Gyro-Referenz neu gesetzt.");
-}
-
-function shortestAngleDelta(current,reference){
-  let delta=current-reference;
-  while(delta>180) delta-=360;
-  while(delta<-180) delta+=360;
-  return delta;
-}
-function wrapAngle(value){return((value%360)+360)%360;}
 
 function onResize(){
   const pr=Math.min(window.devicePixelRatio||1,2);
@@ -473,8 +459,34 @@ function dot(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
 function normalize(v){const length=Math.hypot(v[0],v[1],v[2])||1;return[v[0]/length,v[1]/length,v[2]/length];}
 function clamp(value,min,max){return Math.min(max,Math.max(min,value));}
 function degToRad(degrees){return degrees*Math.PI/180;}
+function radToDeg(radians){return radians*180/Math.PI;}
 function formatBytes(bytes){if(!Number.isFinite(bytes)||bytes===0)return"0 B";const units=["B","KB","MB","GB"],exponent=Math.min(Math.floor(Math.log(bytes)/Math.log(1024)),units.length-1);return`${(bytes/Math.pow(1024,exponent)).toFixed(exponent===0?0:1)} ${units[exponent]}`;}
 function formatDate(timestamp){return new Intl.DateTimeFormat("de-DE",{day:"2-digit",month:"2-digit",year:"2-digit",hour:"2-digit",minute:"2-digit"}).format(new Date(timestamp));}
 function blobToDataUrl(blob){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});}
 function dataUrlToBlob(dataUrl){const[metadata,base64]=dataUrl.split(","),mime=metadata.match(/data:(.*?);base64/)?.[1]||"application/octet-stream",binary=atob(base64),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);return new Blob([bytes],{type:mime});}
+
+function quaternionFromEulerYXZ(x,y,z){
+  const c1=Math.cos(x/2),c2=Math.cos(y/2),c3=Math.cos(z/2),s1=Math.sin(x/2),s2=Math.sin(y/2),s3=Math.sin(z/2);
+  return[
+    s1*c2*c3+c1*s2*s3,
+    c1*s2*c3-s1*c2*s3,
+    c1*c2*s3-s1*s2*c3,
+    c1*c2*c3+s1*s2*s3
+  ];
+}
+function quaternionFromAxisAngle(axis,angle){const half=angle/2,s=Math.sin(half);return[axis[0]*s,axis[1]*s,axis[2]*s,Math.cos(half)];}
+function quaternionMultiply(a,b){return[
+  a[3]*b[0]+a[0]*b[3]+a[1]*b[2]-a[2]*b[1],
+  a[3]*b[1]-a[0]*b[2]+a[1]*b[3]+a[2]*b[0],
+  a[3]*b[2]+a[0]*b[1]-a[1]*b[0]+a[2]*b[3],
+  a[3]*b[3]-a[0]*b[0]-a[1]*b[1]-a[2]*b[2]
+];}
+function quaternionInvert(q){const lengthSq=q[0]*q[0]+q[1]*q[1]+q[2]*q[2]+q[3]*q[3]||1;return[-q[0]/lengthSq,-q[1]/lengthSq,-q[2]/lengthSq,q[3]/lengthSq];}
+function quaternionNormalize(q){const length=Math.hypot(q[0],q[1],q[2],q[3])||1;return[q[0]/length,q[1]/length,q[2]/length,q[3]/length];}
+function rotateVectorByQuaternion(v,q){
+  const p=[v[0],v[1],v[2],0];
+  const result=quaternionMultiply(quaternionMultiply(q,p),quaternionInvert(q));
+  return[result[0],result[1],result[2]];
+}
+
 async function registerServiceWorker(){if(!("serviceWorker" in navigator)) return;try{await navigator.serviceWorker.register("./service-worker.js");}catch{}}
