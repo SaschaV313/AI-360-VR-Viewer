@@ -1,9 +1,9 @@
-const APP_SOURCE = "./app.js?gyro-axis-fix=1";
+const APP_SOURCE = "./app.js?gyro-axis-fix=2";
 
 const replacements = [
   [
     `const viewerForward=normalize([-deviceForward[2],deviceForward[1],deviceForward[0]]);\n  targetLon=radToDeg(Math.atan2(viewerForward[2],viewerForward[0]));\n  targetLat=clamp(radToDeg(Math.asin(clamp(viewerForward[1],-1,1))),-89,89);`,
-    `const viewerForward=normalize([-deviceForward[2],deviceForward[1],deviceForward[0]]);\n  const rawLon=-radToDeg(Math.atan2(viewerForward[2],viewerForward[0]));\n  const rawLat=clamp(-radToDeg(Math.asin(clamp(viewerForward[1],-1,1))),-89,89);\n  targetLon=unwrapAngle(targetLon,rawLon);\n  targetLat=rawLat;`
+    `const viewerForward=normalize([-deviceForward[2],deviceForward[1],deviceForward[0]]);\n  const rawLon=radToDeg(Math.atan2(viewerForward[2],viewerForward[0]));\n  const rawLat=clamp(radToDeg(Math.asin(clamp(viewerForward[1],-1,1))),-89,89);\n  targetLon=unwrapAngle(targetLon,rawLon);\n  targetLat=rawLat;`
   ],
   [
     `lon+=(targetLon-lon)*0.12;`,
