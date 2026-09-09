@@ -10,11 +10,13 @@ const panel = $("#galleryPanel");
 const galleryToggle = $("#galleryToggle");
 const grid = $("#galleryGrid");
 const fileInput = $("#fileInput");
+const openSelected = $("#openSelected");
 const importInput = $("#importInput");
 const store = new PanoramaStore();
 let filePicker, pendingLoad = null;
 let renderer, controls, currentId = null, loadToken = 0, galleryToken = 0;
 let ready = false, busy = false, itemCount = 0, exportUrl = null;
+let selectedFiles = [];
 let toastTimer;
 const thumbnailUrls = new Set();
 const legacyThumbnails = new Map();
@@ -46,9 +48,18 @@ function hideGallery() {
 
 function updateButtons() {
   for (const button of [fileInput, importInput, $("#importGallery")]) button.disabled = !ready || busy;
+  openSelected.disabled = !ready || busy || !selectedFiles.length;
   $("#deleteCurrent").disabled = !ready || busy || currentId === null;
   $("#clearGallery").disabled = $("#exportGallery").disabled = !ready || busy || !itemCount;
   panel.setAttribute("aria-busy", String(busy || !ready));
+}
+
+function updateSelection() {
+  const names = selectedFiles.map(file => file.name || "Bilddatei").join(", ");
+  $("#selectionStatus").textContent = selectedFiles.length
+    ? `${selectedFiles.length} Datei${selectedFiles.length === 1 ? "" : "en"} ausgewählt: ${names}. Jetzt „Öffnen & speichern“ drücken.`
+    : "Zuerst Dateien auswählen, danach öffnen und speichern.";
+  updateButtons();
 }
 
 function updateStorageNotice() {
@@ -300,10 +311,21 @@ function bindEvents() {
   $("#closeGallery").addEventListener("click", hideGallery);
   document.addEventListener("keydown", event => { if (event.key === "Escape") hideGallery(); });
   fileInput.addEventListener("change", () => {
-    const files = Array.from(fileInput.files || []);
+    // Native selection and image processing are separate user actions. Keep the
+    // files and their names visible until the user explicitly confirms them.
+    selectedFiles = Array.from(fileInput.files || []);
+    updateSelection();
+  });
+  openSelected.addEventListener("click", () => {
+    if (!ready || busy || !selectedFiles.length) return;
+    const files = selectedFiles;
     void runOperation(async () => {
       try { await addImages(files, "hinzugefügt"); }
-      finally { fileInput.value = ""; }
+      finally {
+        selectedFiles = [];
+        fileInput.value = "";
+        updateSelection();
+      }
     });
   });
   $("#importGallery").addEventListener("click", () => importInput.click());
@@ -355,7 +377,7 @@ async function init() {
     },
   });
   bindEvents();
-  updateButtons();
+  updateSelection();
   showGallery();
   try {
     renderer = new PanoramaRenderer(viewer, {

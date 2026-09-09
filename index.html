@@ -41,10 +41,12 @@
 
     <div class="upload-card">
       <label for="fileInput" class="upload-label">
-        <strong>Bilder hochladen</strong>
+        <strong>Panoramen hinzufügen</strong>
         <span>JPEG, PNG, WebP. Metadaten sind nicht erforderlich.</span>
       </label>
-      <input id="fileInput" type="file" accept="image/*,.jpg,.jpeg,.jfif,.png,.webp,.avif,.heic,.heif" multiple disabled />
+      <input id="fileInput" type="file" accept="image/*,.jpg,.jpeg,.jfif,.png,.webp,.avif,.heic,.heif" aria-describedby="selectionStatus" multiple disabled />
+      <p id="selectionStatus" class="selection-status" role="status" aria-live="polite">Zuerst Dateien auswählen, danach öffnen und speichern.</p>
+      <button id="openSelected" class="ghost-button primary-button" type="button" disabled>Öffnen &amp; speichern</button>
       <p class="hint">Tipp: 2:1-Bilder funktionieren am besten, z. B. 8192×4096 oder 4096×2048.</p>
     </div>
 

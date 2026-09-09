@@ -194,6 +194,33 @@ canvas {
   background: rgba(8, 13, 22, 0.76);
 }
 
+.selection-status {
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.primary-button {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  font: inherit;
+  font-weight: 600;
+}
+
+.ghost-button.primary-button {
+  color: #07131b;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.primary-button:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+
 .hint {
   margin-top: 10px;
 }

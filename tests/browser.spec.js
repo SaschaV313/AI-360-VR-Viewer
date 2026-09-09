@@ -1,11 +1,17 @@
 import { test, expect } from '@playwright/test';
 import { readFile, writeFile, rm } from 'node:fs/promises';
 const png = await readFile(new URL('./fixtures/panorama.png', import.meta.url));
-const upload = (page, name='panorama.png', mimeType='image/png', buffer=png) => page.locator('#fileInput').setInputFiles({name,mimeType,buffer});
+async function upload(page, name='panorama.png', mimeType='image/png', buffer=png) {
+  await gallery(page);
+  await page.locator('#fileInput').setInputFiles({name,mimeType,buffer});
+  await page.getByRole('button', { name:'Öffnen & speichern', exact:true }).click();
+}
 async function ready(page) {
   await page.goto('./');
   await expect(page.locator('#fileInput')).toBeEnabled();
   await expect(page.locator('#viewer canvas')).toHaveCount(1);
+  await expect(page.locator('#openSelected')).toBeVisible();
+  await expect(page.locator('#openSelected')).toBeDisabled();
 }
 async function gallery(page) {
   if (await page.locator('#galleryPanel').getAttribute('aria-hidden') === 'true') await page.getByRole('button',{name:'Galerie öffnen'}).click();
@@ -79,7 +85,21 @@ test('native picker opens before any WebGL context and ignores early focus/foreg
   });
   expect(await page.evaluate(() => window.graphics)).toEqual({contexts:0,textures:0});
   await chooser.setFiles({name:'native.png',mimeType:'image/png',buffer:png});
+  await expect(page.locator('#selectionStatus')).toContainText('native.png');
+  await expect(page.locator('#openSelected')).toBeEnabled();
+  await expect(page.locator('.thumb')).toHaveCount(0);
+  expect(await page.evaluate(() => window.graphics.contexts)).toBe(0);
+  const count = await page.evaluate(async () => {
+    const {openDatabase,databaseRequest}=await import('./storage.js');
+    const db=await openDatabase();
+    try { return await databaseRequest(db,'readonly',store=>store.count()); }
+    finally { db.close(); }
+  });
+  expect(count).toBe(0);
+  await page.locator('#openSelected').click();
   await loaded(page, 'native.png');
+  await expect(page.locator('#openSelected')).toBeDisabled();
+  await expect(page.locator('#fileInput')).toHaveValue('');
   expect(await page.evaluate(() => window.graphics.textures)).toBe(1);
   expect(navigationCount).toEqual([]);
 });
@@ -108,20 +128,22 @@ test('picker releases a displayed texture and cancel restores the same panorama 
   await expect(page.locator('.thumb')).toHaveCount(1);
 });
 
-test('selection delivered while hidden is saved and displayed only after returning to the page', async ({page}) => {
+test('selection delivered while hidden waits for foreground confirmation before processing', async ({page}) => {
   await monitorGraphics(page);
   await ready(page);
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { value:true, configurable:true });
     document.dispatchEvent(new Event('visibilitychange'));
   });
-  await upload(page);
-  await expect(page.locator('#operationStatus')).toContainText('1 dauerhaft gespeichert');
+  await page.locator('#fileInput').setInputFiles({name:'panorama.png',mimeType:'image/png',buffer:png});
+  await expect(page.locator('#selectionStatus')).toContainText('panorama.png');
+  await expect(page.locator('.thumb')).toHaveCount(0);
   expect(await page.evaluate(() => window.graphics.contexts)).toBe(0);
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { value:false, configurable:true });
     document.dispatchEvent(new Event('visibilitychange'));
   });
+  await page.locator('#openSelected').click();
   await loaded(page);
 });
 
@@ -219,6 +241,8 @@ test('mixed uploads report partial success and reset the file input for reselect
     {name:'bad.jpg',mimeType:'image/jpeg',buffer:Buffer.from('broken')},
     {name:'good.png',mimeType:'image/png',buffer:png},
   ]);
+  await expect(page.locator('#selectionStatus')).toContainText('2 Dateien ausgewählt');
+  await page.locator('#openSelected').click();
   await loaded(page,'good.png');
   await expect(page.locator('#operationStatus')).toContainText('1 Bild hinzugefügt');
   await expect(page.locator('#operationStatus')).toContainText('bad.jpg');
@@ -293,6 +317,7 @@ test('a slow older selection cannot overwrite the most recent gallery selection'
     {name:'first.png',mimeType:'image/png',buffer:png},
     {name:'second.png',mimeType:'image/png',buffer:png},
   ]);
+  await page.locator('#openSelected').click();
   await loaded(page,'first.png');
   await gallery(page);
   await expect.poll(()=>page.locator('.thumb img').evaluateAll(images=>images.every(image=>image.complete))).toBe(true);

@@ -73,8 +73,10 @@ Die leere Galerie startet keinen WebGL-Kontext. Beim Öffnen der nativen
 Dateiauswahl werden Rendering, Textur und Zeichenpuffer freigegeben. Erst
 `change` oder `cancel` beendet die Auswahlpause; `focus`, `pageshow` oder
 `visibilitychange` allein reichen nicht. Im Hintergrund wird keine Textur
-wiederhergestellt. Eine zurückgegebene Datei kann bereits gespeichert werden;
-die Anzeige wartet auf die Rückkehr zur Seite. Bei Abbruch wird das bisherige
+wiederhergestellt. Ausgewählte Bilddateien werden mit Namen angezeigt und erst nach dem
+Bestätigen mit „Öffnen & speichern“ verarbeitet. Die Auswahl allein liest
+keine Bilddaten und schreibt keine Galerieeinträge. Ergebnisse aus einer
+Hintergrundauswahl warten ebenfalls auf diese Bestätigung. Bei Abbruch wird das bisherige
 Panorama mit seiner Blickrichtung wiederhergestellt.
 
 Eine Sitzungsmarkierung ohne Dateiinhalte erkennt eine durch Neuladen
@@ -86,3 +88,14 @@ ersetzen den Test mit der nativen iPhone-Fotomediathek nicht.
 
 Hintergrund: [WebGL-Ressourcen zeitnah freigeben](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/WebGL_best_practices#delete_objects_eagerly)
 und [Abbruchereignis der Dateiauswahl](https://developer.mozilla.org/en-US/docs/Web/API/HTMLInputElement/cancel_event).
+
+
+### Auswahl bestätigen
+
+Der sichtbare Knopf „Öffnen & speichern“ bleibt ohne ausgewählte Dateien
+und während der Verarbeitung deaktiviert. Nach der Verarbeitung wird die
+Auswahl zurückgesetzt, damit dasselbe Bild erneut ausgewählt werden kann.
+Galerieimporte als JSON und Drag-and-drop behalten ihren direkten Importablauf.
+Der Screenshot des iPhone-Tests zeigt die ChatGPT-Websiteansicht. Ein Vergleich
+mit einem direkt in der Safari-App geöffneten Link steht aus; der Knopf allein
+belegt keine Behebung des gemeldeten Neustarts während der nativen Auswahl.

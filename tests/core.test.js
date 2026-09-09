@@ -97,7 +97,7 @@ test('offline shell contains every application module and deletes only viewer ca
   vm.runInNewContext(source,{
     URL,Request,Set,
     self:{registration:{scope},addEventListener(name,handler){handlers[name]=handler;},async skipWaiting(){},clients:{async claim(){}}},
-    caches:{async open(){return cache;},async keys(){return ['another-app', 'ai-360-vr-viewer-v9', `${cachePrefix}v9`, `${cachePrefix}v11`];},async delete(key){removed.push(key);}},
+    caches:{async open(){return cache;},async keys(){return ['another-app', 'ai-360-vr-viewer-v9', `${cachePrefix}v9`, `${cachePrefix}v12`];},async delete(key){removed.push(key);}},
     fetch(){throw new Error('Offline');}
   });
   let job;
