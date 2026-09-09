@@ -114,3 +114,14 @@ test('offline shell contains every application module and deletes only viewer ca
   handlers.fetch({request:new Request(scope+'app.js?gyro-axis-fix=2'),respondWith(promise){response=promise;}});
   assert.equal(await (await response).text(),'cached');
 });
+
+test('stored binary originals reconstruct exactly and legacy Blob records remain readable', async()=>{
+  const {restoreRecord}=await import('../storage.js');
+  const bytes=new Uint8Array([0,1,255,12]).buffer;
+  const record=restoreRecord({blob:bytes,type:'image/png',thumbnail:bytes,thumbnailType:'image/jpeg'});
+  assert.equal(record.blob.type,'image/png');
+  assert.deepEqual(new Uint8Array(await record.blob.arrayBuffer()),new Uint8Array(bytes));
+  assert.equal(record.thumbnail.type,'image/jpeg');
+  const legacy=new Blob(['legacy'],{type:'image/png'});
+  assert.equal(restoreRecord({blob:legacy}).blob,legacy);
+});

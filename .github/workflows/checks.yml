@@ -33,7 +33,10 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npx playwright install --with-deps ${{ matrix.browser }}
-      - run: npm run test:browser -- --project=${{ matrix.browser }}
+      - run: xvfb-run -a npm run test:browser -- --project=${{ matrix.browser }}
+      - name: Print failure context
+        if: failure()
+        run: find test-results -name error-context.md -exec cat {} +
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

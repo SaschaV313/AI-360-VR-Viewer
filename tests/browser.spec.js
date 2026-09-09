@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile, rm } from 'node:fs/promises';
 const png = await readFile(new URL('./fixtures/panorama.png', import.meta.url));
 const upload = (page, name='panorama.png', mimeType='image/png', buffer=png) => page.locator('#fileInput').setInputFiles({name,mimeType,buffer});
 async function ready(page) {
@@ -24,9 +24,10 @@ test('fresh startup, upload, small preview and reload retain original bytes', as
   await upload(page);
   await loaded(page);
   const stored = await page.evaluate(async () => {
-    const {openDatabase,databaseRequest}=await import('./storage.js');
+    const {openDatabase,databaseRequest,restoreRecord}=await import('./storage.js');
     const db=await openDatabase();
-    const [record]=await databaseRequest(db,'readonly',store=>store.getAll());
+    const [raw]=await databaseRequest(db,'readonly',store=>store.getAll());
+    const record=restoreRecord(raw);
     db.close();
     const preview=await createImageBitmap(record.thumbnail);
     const result={size:record.blob.size,constructor:record.blob.constructor.name,previewWidth:preview.width};
@@ -56,14 +57,18 @@ test('empty version-1 database is repaired automatically', async ({page}) => {
 test('existing version-1 gallery migrates without losing its stored image', async ({page}) => {
   await page.goto('./tests/blank.html');
   await page.evaluate(async () => {
-    const blob=await (await fetch('./fixtures/panorama.png')).blob();
+    const original=await (await fetch('./fixtures/panorama.png')).blob();
+    // Some WebKit test contexts reject Blob writes before the app even starts.
+    // Seed bytes there; test the original Blob record path in other engines.
+    const blob=/AppleWebKit/.test(navigator.userAgent)&&!/Chrome/.test(navigator.userAgent)
+      ? await original.arrayBuffer() : original;
     await new Promise((resolve,reject)=>{
       const request=indexedDB.open('ai-360-vr-viewer',1);
       request.onupgradeneeded=()=>request.result.createObjectStore('panoramas',{keyPath:'id'});
       request.onsuccess=()=>{
         const db=request.result;
         const tx=db.transaction('panoramas','readwrite');
-        tx.objectStore('panoramas').put({id:'legacy',name:'legacy.png',createdAt:1,blob,size:blob.size});
+        tx.objectStore('panoramas').put({id:'legacy',name:'legacy.png',type:'image/png',createdAt:1,blob,size:original.size});
         tx.oncomplete=()=>{db.close();resolve();};
         tx.onabort=()=>reject(tx.error);
       };
@@ -164,9 +169,10 @@ test('export and import round trip preserves image bytes, then deletion returns 
 test('mobile layout keeps upload and close controls accessible', async ({page}) => {
   await page.setViewportSize({width:390,height:844});
   await ready(page);
-  const box=await page.locator('#fileInput').boundingBox();
-  expect(box.x).toBeGreaterThanOrEqual(0);
-  expect(box.x+box.width).toBeLessThanOrEqual(390);
+  await expect.poll(async()=>{
+    const box=await page.locator('#fileInput').boundingBox();
+    return box.x>=0&&box.x+box.width<=390;
+  }).toBe(true);
   await page.getByRole('button',{name:'Schließen',exact:true}).click();
   await expect(page.locator('#galleryPanel')).toHaveAttribute('aria-hidden','true');
   await page.getByRole('button',{name:'Galerie öffnen'}).click();
@@ -184,12 +190,17 @@ test.describe('offline installation',()=>{
       await navigator.serviceWorker.ready;
       if(!navigator.serviceWorker.controller) await new Promise(resolve=>navigator.serviceWorker.addEventListener('controllerchange',resolve,{once:true}));
     });
-    await context.setOffline(true);
-    await page.reload();
-    await loaded(page);
-    await gallery(page);
-    await upload(page,'offline.png');
-    await loaded(page,'offline.png');
+    // Actually sever server responses. WebKit's setOffline navigation can fail
+    // before its service worker gets a chance to respond (Playwright #34402).
+    await writeFile('.test-offline','offline');
+    try {
+      await expect(fetch('http://127.0.0.1:4173/')).rejects.toThrow();
+      await page.reload();
+      await loaded(page);
+      await gallery(page);
+      await upload(page,'offline.png');
+      await loaded(page,'offline.png');
+    } finally { await rm('.test-offline',{force:true}); }
   });
 });
 

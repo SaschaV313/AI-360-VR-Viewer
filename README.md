@@ -10,7 +10,7 @@ JPEG, PNG und WebP sind die empfohlenen Formate. Weitere Bildformate funktionier
 
 ## Speicherung und Kompatibilität
 
-- Originalbilder werden als eigenständige Blobs in IndexedDB gespeichert. Vorhandene Galerien bleiben bei der Migration auf Datenbankversion 2 erhalten. Auch leere Version-1-Datenbanken aus dem früheren Startfehler werden repariert.
+- Originalbilder werden als unveränderte Binärdaten in IndexedDB gespeichert und beim Lesen wieder als Blobs bereitgestellt. Bestehende Blob-Einträge bleiben lesbar. Vorhandene Galerien bleiben bei der Migration auf Datenbankversion 2 erhalten. Auch leere Version-1-Datenbanken aus dem früheren Startfehler werden repariert.
 - Ein fehlender oder generischer MIME-Typ wird durch die Dateiendung ergänzt. Erst erfolgreich decodierte Bilder werden aufgenommen. Beschädigte Dateien brechen einen Mehrfach-Upload nicht ab.
 - Wenn IndexedDB blockiert oder der Speicher voll ist, bleiben neue Bilder für die laufende Sitzung verfügbar. Der Hinweis in der Galerie unterscheidet dies ausdrücklich von dauerhaft gespeicherten Bildern. Vor dem Schließen exportieren.
 - Die Anzeige wird an `MAX_TEXTURE_SIZE` und ein Budget von 16 Megapixeln angepasst; bei Grafikfehlern wird eine kleinere Textur versucht. Gespeicherte Originale und Exporte werden nicht verkleinert. Das vollständige Original muss zunächst decodierbar sein: extrem große Dateien können weiterhin die Arbeitsspeichergrenzen eines Geräts überschreiten.

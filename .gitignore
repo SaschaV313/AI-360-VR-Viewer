@@ -19,3 +19,5 @@ build/
 # Browser regression test output
 playwright-report/
 test-results/
+
+.test-offline

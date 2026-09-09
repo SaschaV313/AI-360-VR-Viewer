@@ -2,6 +2,18 @@ export const DB_NAME = "ai-360-vr-viewer";
 export const DB_VERSION = 2;
 const STORE_NAME = "panoramas";
 
+// WebKit can reject IndexedDB Blob writes even when image decoding works.
+// Store binary bytes and reconstruct Blobs at the storage boundary. Old Blob
+// records remain readable, and originals keep their exact byte content.
+export function restoreRecord(record) {
+  if (!record) return record;
+  return {
+    ...record,
+    blob: record.blob instanceof ArrayBuffer ? new Blob([record.blob], { type: record.type || "image/jpeg" }) : record.blob,
+    thumbnail: record.thumbnail instanceof ArrayBuffer ? new Blob([record.thumbnail], { type: record.thumbnailType || "image/jpeg" }) : record.thumbnail,
+  };
+}
+
 // Version 2 also repairs databases created without a store by placeholder-state.js.
 // Never delete the database: version-1 galleries must keep their original images.
 export function openDatabase(name = DB_NAME, factory = globalThis.indexedDB) {
@@ -69,19 +81,24 @@ export class PanoramaStore {
 
   async all() {
     const saved = this.db ? await databaseRequest(this.db, "readonly", store => store.getAll()) : [];
-    const merged = new Map(saved.map(item => [item.id, item]));
+    const merged = new Map(saved.map(item => [item.id, restoreRecord(item)]));
     for (const [id, item] of this.temporary) merged.set(id, item);
     return [...merged.values()].sort((a, b) => b.createdAt - a.createdAt);
   }
 
   async get(id) {
-    return this.temporary.get(id) || (this.db ? await databaseRequest(this.db, "readonly", store => store.get(id)) : undefined);
+    return this.temporary.get(id) || (this.db ? restoreRecord(await databaseRequest(this.db, "readonly", store => store.get(id))) : undefined);
   }
 
   async put(record) {
     if (this.db) {
       try {
-        await databaseRequest(this.db, "readwrite", store => store.put(record));
+        const stored = { ...record, blob: await record.blob.arrayBuffer() };
+        if (record.thumbnail) {
+          stored.thumbnail = await record.thumbnail.arrayBuffer();
+          stored.thumbnailType = record.thumbnail.type;
+        }
+        await databaseRequest(this.db, "readwrite", store => store.put(stored));
         this.temporary.delete(record.id);
         return true;
       } catch (error) {
