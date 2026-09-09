@@ -8,10 +8,14 @@ export class PanoramaRenderer {
   constructor(container, { onLost = () => {}, onRestored = () => {} } = {}) {
     this.canvas = document.createElement("canvas");
     this.container = container;
-    this.gl = this.canvas.getContext("webgl", { antialias: false, alpha: false });
-    if (!this.gl) throw new Error("WebGL ist in diesem Browser oder auf diesem Gerät nicht verfügbar.");
+    // Opening the native picker must not compete with an idle 3D context.
+    this.gl = null;
+    this.texture = null;
+    this.initialized = false;
+    this.suspended = false;
+    this.canvas.width = this.canvas.height = 1;
     container.append(this.canvas);
-    this.mesh = createSphereMesh(96, 64);
+    this.mesh = null;
     this.lost = false;
     this.canvas.addEventListener("webglcontextlost", event => {
       event.preventDefault();
@@ -19,13 +23,22 @@ export class PanoramaRenderer {
       onLost();
     });
     this.canvas.addEventListener("webglcontextrestored", () => {
-      try { this.initialize(); this.lost = false; onRestored(); }
+      try {
+        this.texture = null;
+        this.initialized = false;
+        this.lost = false;
+        // The app decides when foreground/picker state permits allocating again.
+        onRestored();
+      }
       catch (error) { onLost(error); }
     });
-    this.initialize();
   }
 
   initialize() {
+    if (this.initialized) return;
+    this.gl ||= this.canvas.getContext("webgl", { antialias: false, alpha: false, depth: false, stencil: false });
+    if (!this.gl) throw new Error("WebGL ist in diesem Browser oder auf diesem Gerät nicht verfügbar.");
+    this.mesh ||= createSphereMesh(96, 64);
     const gl = this.gl;
     this.texture = null;
     this.program = createProgram(gl, vertexSource, fragmentSource);
@@ -34,12 +47,12 @@ export class PanoramaRenderer {
     this.attributes = { position: gl.getAttribLocation(this.program, "aPosition"), uv: gl.getAttribLocation(this.program, "aUv") };
     this.maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.enable(gl.DEPTH_TEST);
-    gl.depthFunc(gl.LEQUAL);
+    this.initialized = true;
     this.resize();
   }
 
   resize() {
+    if (!this.gl || this.lost || this.suspended || document.hidden) return;
     const ratio = Math.min(window.devicePixelRatio || 1, 2);
     const width = Math.max(1, Math.floor(this.container.clientWidth * ratio));
     const height = Math.max(1, Math.floor(this.container.clientHeight * ratio));
@@ -51,6 +64,9 @@ export class PanoramaRenderer {
   }
 
   setImage(image) {
+    if (this.suspended || document.hidden) throw new Error("Die Ansicht pausiert während der Dateiauswahl.");
+    if (this.lost) throw new Error("Grafik wird wiederhergestellt. Bitte kurz warten.");
+    this.initialize();
     const gl = this.gl;
     if (this.lost || gl.isContextLost()) throw new Error("Grafik wird wiederhergestellt. Bitte kurz warten.");
     const originalWidth = image.naturalWidth || image.width;
@@ -88,27 +104,41 @@ export class PanoramaRenderer {
     }
   }
 
-  placeholder() {
-    const canvas = document.createElement("canvas");
-    canvas.width = 512;
-    canvas.height = 256;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#0f172a";
-    ctx.fillRect(0, 0, 512, 256);
-    ctx.strokeStyle = "rgba(103,232,249,0.18)";
-    for (let x = 0; x <= 512; x += 32) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 256); ctx.stroke(); }
-    for (let y = 0; y <= 256; y += 32) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke(); }
-    this.setImage(canvas);
-    canvas.width = canvas.height = 1;
+  releaseResources() {
+    const gl = this.gl;
+    if (gl && !gl.isContextLost()) {
+      if (this.texture) gl.deleteTexture(this.texture);
+      if (this.program) gl.deleteProgram(this.program);
+      for (const buffer of Object.values(this.buffers || {})) gl.deleteBuffer(buffer);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      gl.useProgram(null);
+      gl.bindBuffer(gl.ARRAY_BUFFER, null);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+    }
+    this.texture = this.program = this.buffers = null;
+    this.initialized = false;
+    this.canvas.width = this.canvas.height = 1;
+    if (gl && !gl.isContextLost()) gl.flush();
   }
 
+  suspend() {
+    if (this.suspended) return;
+    this.suspended = true;
+    this.releaseResources();
+  }
+
+  resume() { this.suspended = false; }
+
+  // The empty state is HTML/CSS; it needs no GPU texture or WebGL context.
+  placeholder() { this.releaseResources(); }
+
   draw({ lon, lat, fov }) {
-    if (this.lost || !this.texture) return;
+    if (this.lost || this.suspended || !this.texture || document.hidden) return;
     const gl = this.gl;
     const phi = degToRad(90 - lat), theta = degToRad(lon);
     const target = [Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta)];
     gl.clearColor(0.02, 0.03, 0.05, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.clear(gl.COLOR_BUFFER_BIT);
     gl.useProgram(this.program);
     gl.uniformMatrix4fv(this.uniforms.projection, false, makePerspective(degToRad(fov), this.canvas.width / this.canvas.height, 0.1, 1100));
     gl.uniformMatrix4fv(this.uniforms.view, false, makeLookAt([0, 0, 0], target, [0, 1, 0]));
@@ -131,6 +161,7 @@ function createProgram(glContext,vertexSource,fragmentSource){
   const fragmentShader=compileShader(glContext,glContext.FRAGMENT_SHADER,fragmentSource);
   const shaderProgram=glContext.createProgram();
   glContext.attachShader(shaderProgram,vertexShader);glContext.attachShader(shaderProgram,fragmentShader);glContext.linkProgram(shaderProgram);
+  glContext.deleteShader(vertexShader);glContext.deleteShader(fragmentShader);
   if(!glContext.getProgramParameter(shaderProgram,glContext.LINK_STATUS)) throw new Error(glContext.getProgramInfoLog(shaderProgram));
   return shaderProgram;
 }

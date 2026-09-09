@@ -65,3 +65,24 @@ Für eine Geräteprüfung: JPEG/PNG aus „Fotos“ und „Dateien“ öffnen, d
 | `tests/` | Kern- und Browser-Regressionstests |
 
 `app-bootstrap.js` und `placeholder-state.js` bleiben als kompatible Einstiegspunkte für alte HTML-Caches erhalten. Sie verändern keinen Quelltext mehr und öffnen keine zweite Datenbank.
+
+
+### iPhone-Dateiauswahl
+
+Die leere Galerie startet keinen WebGL-Kontext. Beim Öffnen der nativen
+Dateiauswahl werden Rendering, Textur und Zeichenpuffer freigegeben. Erst
+`change` oder `cancel` beendet die Auswahlpause; `focus`, `pageshow` oder
+`visibilitychange` allein reichen nicht. Im Hintergrund wird keine Textur
+wiederhergestellt. Eine zurückgegebene Datei kann bereits gespeichert werden;
+die Anzeige wartet auf die Rückkehr zur Seite. Bei Abbruch wird das bisherige
+Panorama mit seiner Blickrichtung wiederhergestellt.
+
+Eine Sitzungsmarkierung ohne Dateiinhalte erkennt eine durch Neuladen
+unterbrochene Auswahl. Der konkrete vom iPhone gemeldete Seitenneustart ist
+noch nicht auf physischer Hardware reproduziert. Die Änderung reduziert
+vermeidbare Grafiklast und sichert die Ereignisreihenfolge ab; sie beweist
+keine bestimmte Ursache des iOS-Neustarts. Automatisierte Dateiauswahltests
+ersetzen den Test mit der nativen iPhone-Fotomediathek nicht.
+
+Hintergrund: [WebGL-Ressourcen zeitnah freigeben](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/WebGL_best_practices#delete_objects_eagerly)
+und [Abbruchereignis der Dateiauswahl](https://developer.mozilla.org/en-US/docs/Web/API/HTMLInputElement/cancel_event).

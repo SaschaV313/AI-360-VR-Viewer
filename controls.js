@@ -13,11 +13,12 @@ export function createControls(viewer, renderer, { showToast, hideGallery }) {
 
   // Draw only while the view changes, and pause completely in background tabs.
   function invalidate() {
-    if (!frame && !document.hidden && !renderer.lost) frame = requestAnimationFrame(animate);
+    if (!frame && !document.hidden && !renderer.lost && !renderer.suspended && renderer.texture) frame = requestAnimationFrame(animate);
   }
 
   function animate(time) {
     frame = 0;
+    if (document.hidden || renderer.suspended || renderer.lost || !renderer.texture) return;
     const delta = previousTime ? Math.min(50, time - previousTime) : 16.67;
     previousTime = time;
     const smoothing = 1 - Math.pow(0.88, delta / 16.67);
@@ -38,11 +39,16 @@ export function createControls(viewer, renderer, { showToast, hideGallery }) {
     if (showMessage) showToast(gyroEnabled ? "Gyro-Referenz neu gesetzt." : "Ansicht zurückgesetzt.");
   }
 
+  function pause() {
+    cancelAnimationFrame(frame); frame = 0; previousTime = 0; pointers.clear();
+    viewer.classList.remove("dragging");
+  }
+
   function resize() { renderer.resize(); invalidate(); }
   window.addEventListener("resize", resize);
   window.visualViewport?.addEventListener("resize", resize);
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) { cancelAnimationFrame(frame); frame = 0; previousTime = 0; pointers.clear(); }
+    if (document.hidden) pause();
     else resize();
   });
   window.addEventListener("orientationchange", () => setTimeout(() => {
@@ -147,7 +153,7 @@ export function createControls(viewer, renderer, { showToast, hideGallery }) {
   });
 
   function onOrientation(event) {
-    if (!gyroEnabled || ![event.alpha, event.beta, event.gamma].every(Number.isFinite)) return;
+    if (document.hidden || renderer.suspended || !gyroEnabled || ![event.alpha, event.beta, event.gamma].every(Number.isFinite)) return;
     const screenAngle = screen.orientation?.angle ?? window.orientation ?? 0;
     let q = quaternionFromEulerYXZ(degToRad(event.beta), degToRad(event.alpha), -degToRad(event.gamma));
     q = quaternionMultiply(q, quaternionFromAxisAngle([1, 0, 0], -Math.PI / 2));
@@ -163,5 +169,5 @@ export function createControls(viewer, renderer, { showToast, hideGallery }) {
     invalidate();
   }
 
-  return { reset, invalidate, resize };
+  return { reset, invalidate, resize, pause };
 }

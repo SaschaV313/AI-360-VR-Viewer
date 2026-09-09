@@ -42,6 +42,89 @@ test('fresh startup, upload, small preview and reload retain original bytes', as
   expect(errors).toEqual([]);
 });
 
+async function monitorGraphics(page) {
+  await page.addInitScript(() => {
+    window.graphics = { contexts: 0, textures: 0 };
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function(type, ...args) {
+      if (type === 'webgl') window.graphics.contexts++;
+      return getContext.call(this, type, ...args);
+    };
+    const createTexture = WebGLRenderingContext.prototype.createTexture;
+    const deleteTexture = WebGLRenderingContext.prototype.deleteTexture;
+    WebGLRenderingContext.prototype.createTexture = function() {
+      const texture = createTexture.call(this);
+      if (texture) window.graphics.textures++;
+      return texture;
+    };
+    WebGLRenderingContext.prototype.deleteTexture = function(texture) {
+      if (texture) window.graphics.textures--;
+      return deleteTexture.call(this, texture);
+    };
+  });
+}
+
+test('native picker opens before any WebGL context and ignores early focus/foreground events', async ({page}) => {
+  await monitorGraphics(page);
+  await ready(page);
+  const navigationCount = [];
+  page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigationCount.push(frame.url()); });
+  const chooserPromise = page.waitForEvent('filechooser');
+  await page.locator('#fileInput').click();
+  const chooser = await chooserPromise;
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('focus'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('pageshow'));
+  });
+  expect(await page.evaluate(() => window.graphics)).toEqual({contexts:0,textures:0});
+  await chooser.setFiles({name:'native.png',mimeType:'image/png',buffer:png});
+  await loaded(page, 'native.png');
+  expect(await page.evaluate(() => window.graphics.textures)).toBe(1);
+  expect(navigationCount).toEqual([]);
+});
+
+test('picker releases a displayed texture and cancel restores the same panorama without a reload', async ({page}) => {
+  await monitorGraphics(page);
+  await ready(page);
+  await upload(page);
+  await loaded(page);
+  await gallery(page);
+  const chooserPromise = page.waitForEvent('filechooser');
+  await page.locator('#fileInput').click();
+  await chooserPromise;
+  expect(await page.evaluate(() => window.graphics.textures)).toBe(0);
+  await expect(page.locator('#viewer canvas')).toHaveAttribute('width', '1');
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('focus'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    // A restored context must not allocate a panorama during the picker pause.
+    document.querySelector('#viewer canvas').dispatchEvent(new Event('webglcontextrestored'));
+  });
+  expect(await page.evaluate(() => window.graphics.textures)).toBe(0);
+  await page.locator('#fileInput').dispatchEvent('cancel');
+  await expect.poll(() => page.evaluate(() => window.graphics.textures)).toBe(1);
+  await loaded(page);
+  await expect(page.locator('.thumb')).toHaveCount(1);
+});
+
+test('selection delivered while hidden is saved and displayed only after returning to the page', async ({page}) => {
+  await monitorGraphics(page);
+  await ready(page);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { value:true, configurable:true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await upload(page);
+  await expect(page.locator('#operationStatus')).toContainText('1 dauerhaft gespeichert');
+  expect(await page.evaluate(() => window.graphics.contexts)).toBe(0);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { value:false, configurable:true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await loaded(page);
+});
+
 test('empty version-1 database is repaired automatically', async ({page}) => {
   await page.goto('./tests/blank.html');
   await page.evaluate(()=>new Promise((resolve,reject)=>{

@@ -97,13 +97,13 @@ test('offline shell contains every application module and deletes only viewer ca
   vm.runInNewContext(source,{
     URL,Request,Set,
     self:{registration:{scope},addEventListener(name,handler){handlers[name]=handler;},async skipWaiting(){},clients:{async claim(){}}},
-    caches:{async open(){return cache;},async keys(){return ['another-app', 'ai-360-vr-viewer-v9', `${cachePrefix}v9`, `${cachePrefix}v10`];},async delete(key){removed.push(key);}},
+    caches:{async open(){return cache;},async keys(){return ['another-app', 'ai-360-vr-viewer-v9', `${cachePrefix}v9`, `${cachePrefix}v11`];},async delete(key){removed.push(key);}},
     fetch(){throw new Error('Offline');}
   });
   let job;
   handlers.install({waitUntil(promise){job=promise;}});
   await job;
-  for(const file of ['app.js','viewer-app.js','app-bootstrap.js','storage.js','images.js','renderer.js','controls.js','math.js']){
+  for(const file of ['app.js','viewer-app.js','app-bootstrap.js','storage.js','file-picker.js','images.js','renderer.js','controls.js','math.js']){
     assert.ok(installed.includes(new URL(file,scope).href),file);
     await readFile(new URL('../'+file,import.meta.url));
   }

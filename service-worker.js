@@ -1,9 +1,9 @@
 const CACHE_PREFIX = `ai-360-vr-viewer-${encodeURIComponent(self.registration.scope)}-`;
-const CACHE_NAME = `${CACHE_PREFIX}v10`;
+const CACHE_NAME = `${CACHE_PREFIX}v11`;
 const APP_SHELL = [
   "./", "./index.html", "./styles.css", "./placeholder.css", "./gyro.css",
   "./app.js", "./viewer-app.js", "./app-bootstrap.js", "./placeholder-state.js",
-  "./storage.js", "./images.js", "./renderer.js", "./controls.js", "./math.js",
+  "./storage.js", "./file-picker.js", "./images.js", "./renderer.js", "./controls.js", "./math.js",
   "./manifest.webmanifest", "./icon.svg",
 ];
 const APP_URLS = new Set(APP_SHELL.map(path => new URL(path, self.registration.scope).href));

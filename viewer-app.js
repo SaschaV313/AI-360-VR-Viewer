@@ -2,6 +2,7 @@ import { PanoramaStore } from "./storage.js";
 import { prepareImage, decodeImage, createThumbnail, blobToDataUrl, dataUrlToBlob } from "./images.js";
 import { PanoramaRenderer } from "./renderer.js";
 import { createControls } from "./controls.js";
+import { bindFilePickers } from "./file-picker.js";
 
 const $ = selector => document.querySelector(selector);
 const viewer = $("#viewer");
@@ -11,6 +12,7 @@ const grid = $("#galleryGrid");
 const fileInput = $("#fileInput");
 const importInput = $("#importInput");
 const store = new PanoramaStore();
+let filePicker, pendingLoad = null;
 let renderer, controls, currentId = null, loadToken = 0, galleryToken = 0;
 let ready = false, busy = false, itemCount = 0, exportUrl = null;
 let toastTimer;
@@ -60,6 +62,7 @@ function updateStorageNotice() {
 
 function setPlaceholder() {
   ++loadToken;
+  pendingLoad = null;
   currentId = null;
   renderer.placeholder();
   controls.reset();
@@ -70,7 +73,25 @@ function setPlaceholder() {
   updateButtons();
 }
 
-async function loadPanorama(id, { close = true } = {}) {
+function suspendViewer() {
+  if (!renderer || renderer.suspended) return;
+  ++loadToken;
+  controls?.pause();
+  renderer.suspend();
+}
+
+function resumeViewer() {
+  if (!ready || busy || filePicker.blocked || renderer.lost) return;
+  renderer.resume();
+  if (pendingLoad) void loadPanorama(pendingLoad.id, pendingLoad.options);
+  else if (currentId !== null && !renderer.texture) void loadPanorama(currentId, { close: false, reset: false });
+  else controls.invalidate();
+}
+
+async function loadPanorama(id, { close = true, reset = true } = {}) {
+  pendingLoad = { id, options: { close, reset } };
+  if (filePicker.blocked || renderer.lost) return false;
+  renderer.resume();
   const token = ++loadToken;
   $("#loadStatus").textContent = "Panorama wird geladen …";
   let image, loaded = false;
@@ -83,8 +104,10 @@ async function loadPanorama(id, { close = true } = {}) {
     const result = renderer.setImage(image);
     // Commit selection only after decoding AND GPU upload have succeeded.
     currentId = id;
+    pendingLoad = null;
     loaded = true;
-    controls.reset();
+    if (reset) controls.reset();
+    else controls.invalidate();
     $("#placeholderOverlay").classList.add("hidden");
     $("#placeholderOverlay").setAttribute("aria-hidden", "true");
     markActive();
@@ -94,6 +117,7 @@ async function loadPanorama(id, { close = true } = {}) {
     return true;
   } catch (error) {
     if (token === loadToken) {
+      pendingLoad = null;
       $("#loadStatus").textContent = error.message || "Bild konnte nicht geladen werden.";
       showToast($("#loadStatus").textContent);
     }
@@ -147,7 +171,7 @@ function renderGallery(items) {
     meta.textContent = `${formatBytes(item.size)} · ${Number.isFinite(date.getTime()) ? date.toLocaleDateString("de-DE") : ""}${store.temporary.has(item.id) ? " · nur diese Sitzung" : ""}`;
     info.append(title, meta);
     button.append(image, info);
-    button.addEventListener("click", () => loadPanorama(item.id));
+    button.addEventListener("click", event => loadPanorama(event.currentTarget.dataset.id));
     grid.append(button);
     previews.push({ item, image });
   }
@@ -176,7 +200,7 @@ async function fillPreviews(previews, token) {
       thumbnailUrls.add(url);
       const release = () => { URL.revokeObjectURL(url); thumbnailUrls.delete(url); };
       image.onload = release;
-      image.onerror = () => { release(); image.onerror = null; image.alt = `${item.name} – keine Vorschau`; };
+      image.onerror = () => { release(); image.onerror = null; image.alt += " – keine Vorschau"; };
       image.src = url;
     } catch { image.alt = `${item.name} – keine Vorschau`; }
   }
@@ -194,6 +218,7 @@ async function runOperation(task) {
     busy = false;
     updateButtons();
     updateStorageNotice();
+    resumeViewer();
   }
 }
 
@@ -322,16 +347,23 @@ function formatBytes(bytes) {
 }
 
 async function init() {
+  filePicker = bindFilePickers([fileInput, importInput], {
+    suspend: suspendViewer,
+    resume: resumeViewer,
+    interrupted: () => {
+      $("#operationStatus").textContent = "Die Seite wurde während der Dateiauswahl neu geladen. Bitte erneut auswählen. Gespeicherte Bilder bleiben erhalten.";
+    },
+  });
   bindEvents();
   updateButtons();
   showGallery();
   try {
     renderer = new PanoramaRenderer(viewer, {
-      onLost: () => { ++loadToken; $("#loadStatus").textContent = "Grafik wird wiederhergestellt …"; },
-      onRestored: () => {
-        if (currentId !== null) void loadPanorama(currentId, { close: false });
-        else setPlaceholder();
+      onLost: () => {
+        ++loadToken; controls?.pause();
+        if (!filePicker.blocked) $("#loadStatus").textContent = "Grafik wird wiederhergestellt …";
       },
+      onRestored: resumeViewer,
     });
     controls = createControls(viewer, renderer, { showToast, hideGallery });
     setPlaceholder();
