@@ -15,3 +15,9 @@ build/
 # Local env files
 .env
 .env.*
+
+# Browser regression test output
+playwright-report/
+test-results/
+
+.test-offline
